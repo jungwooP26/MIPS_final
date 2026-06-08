@@ -11,6 +11,550 @@
 
 페이지는 PDF 뷰어 번호 기준이다. Ch3은 내부 표기가 4쪽 커서 `PDF 43~51 = 내부 47~55`이며, 특히 `PDF 50 = 내부 54`다.
 
+## 먼저 보는 문제 표현 변환표
+
+문제는 같은 개념을 여러 용어로 바꿔 낼 수 있다. 괄호 안 단어는 같은 의미로 보고 식에 넣으면 된다.
+
+### 공통 성능 용어
+
+| 문제 표현 | 같은 의미 | 공식에서 쓰는 말 |
+|---|---|---|
+| execution time | running time, elapsed time, latency | time |
+| old time | original time, baseline time | 개선 전 시간 |
+| new time | improved time, optimized time | 개선 후 시간 |
+| speedup | performance improvement, faster by | `old time / new time` |
+| clock rate | frequency | cycles/s |
+| cycle time | clock period | seconds/cycle |
+| instruction count | number of instructions | IC |
+| CPI | cycles per instruction | cycles/instruction |
+| IPC | instructions per cycle | instructions/cycle |
+| throughput | bandwidth, rate | work/time |
+
+핵심 변환:
+
+```text
+cycle time = 1 / clock rate
+clock rate = 1 / cycle time
+cycles = time / cycle time = time × clock rate
+time = cycles × cycle time
+CPU time = instruction count × CPI × cycle time
+CPU time = instruction count × CPI / clock rate
+IPC = 1 / CPI
+```
+
+### Cache/Memory 용어
+
+| 문제 표현 | 같은 의미 | 공식에서 쓰는 말 |
+|---|---|---|
+| access | reference, memory reference, cache access | access |
+| references per instruction | accesses/instruction, memory accesses per instruction | access 수 / instruction |
+| miss rate | miss ratio, misses/accesses | miss rate |
+| hit rate | hit ratio, hits/accesses | hit rate |
+| miss penalty | miss latency, miss service time, miss cost | miss penalty |
+| hit time | hit latency, cache access time | hit time |
+| AMAT | average memory access time, average access latency | AMAT |
+| cache block | cache line, line, block | block/line |
+| cache entry | cache line slot, line entry | line/entry |
+| block offset | byte offset, word offset, offset | offset |
+| index | set index, cache index | index |
+| tag | address tag | tag |
+| valid bit | valid flag | valid |
+| dirty bit | modified bit | dirty |
+| load/store fraction | data access fraction, data references/instruction | data accesses/instruction |
+| write penalty | write latency, write stall | write penalty |
+
+주의:
+
+- `miss penalty`와 `miss latency`는 대부분 같은 말이다.
+- 문제에서 시간이 ns로 주어지고 CPI를 구하라고 하면 cycles로 바꾼다.
+- 문제에서 penalty가 이미 cycle이면 그대로 쓴다.
+- `reference per instruction = 1.35`처럼 나오면 access가 instruction당 1.35번이라는 뜻이다.
+
+### Cache 주소/용량 용어
+
+| 문제 표현 | 같은 의미 |
+|---|---|
+| direct-mapped | 1-way set associative |
+| fully associative | set이 1개이고 모든 line 중 선택 가능 |
+| N-way set associative | set마다 N개 line |
+| number of entries | number of lines, cache lines |
+| block size | line size |
+| data storage bits | 순수 data bits만 |
+| total required bits | data + tag + valid + dirty + replacement 등 구현 비트 |
+| overhead bits | tag/valid/dirty/replacement처럼 data가 아닌 비트 |
+
+### Floating Point / AI 용어
+
+| 문제 표현 | 같은 의미 |
+|---|---|
+| parameter | weight, model weight |
+| model memory | parameter storage, weight memory |
+| MAC | multiply-accumulate, multiply-add |
+| FLOPs | floating-point operations |
+| OPS/TOPS | operations per second / tera operations per second |
+| quantization | lower precision representation |
+| BF16/FP16/FP8 | floating-point format 종류 |
+
+주의:
+
+- 1 MAC을 multiply 1개 + add 1개로 세면 `1 MAC = 2 FLOPs`.
+- 어떤 문제는 MAC을 operation 1개로 세기도 하므로 “FLOPs”인지 “MACs”인지 확인한다.
+
+### Pipeline / Branch 용어
+
+| 문제 표현 | 같은 의미 |
+|---|---|
+| stall | bubble, delay cycle |
+| flush penalty | branch penalty, misprediction penalty |
+| branch frequency | branch fraction, branches/instruction |
+| prediction accuracy | correct prediction rate |
+| misprediction rate | wrong prediction rate |
+| forwarding | bypassing |
+| load-use hazard | load-to-use hazard |
+
+### SIMD / GPU 용어
+
+| 문제 표현 | 같은 의미 |
+|---|---|
+| lane | element slot |
+| vector width | SIMD width, register width |
+| tail | remainder elements |
+| warp | 32 CUDA threads 단위 |
+| block | CUDA thread block |
+| grid | CUDA kernel 전체 block 집합 |
+| occupancy | active warps / maximum warps |
+| resident threads | stored thread contexts |
+| peak FLOPS | 이론 최대 연산 처리량 |
+| sustained FLOPS | 실제 유지 처리량 |
+
+## 유도식 + 문제 표현별 공식
+
+### 1. Speedup
+
+기본 정의:
+
+```text
+Speedup = old execution time / new execution time
+Speedup = original time / improved time
+Speedup = baseline time / optimized time
+```
+
+성능이 `n배` 빨라졌다면:
+
+```text
+new time = old time / n
+```
+
+### 2. CPI, IPC, Clock
+
+```text
+CPI = cycles / instructions
+IPC = instructions / cycles
+IPC = 1 / CPI
+```
+
+```text
+CPU time = instruction count × CPI × cycle time
+CPU time = instruction count × CPI / clock rate
+```
+
+clock rate를 구할 때:
+
+```text
+clock rate = 1 / cycle time
+cycle time = 1 / clock rate
+```
+
+예: hit time이 cycle time을 결정한다면
+
+```text
+cycle time = L1 hit time
+clock rate = 1 / L1 hit time
+```
+
+### 3. Memory stall 공식 유도
+
+전체 program 기준:
+
+```text
+Memory stall cycles
+= memory accesses/program × miss rate × miss penalty(miss latency)
+```
+
+instruction당 CPI로 바꾸려면 양쪽을 instruction 수로 나눈다.
+
+```text
+stall CPI
+= Memory stall cycles / instructions
+= (memory accesses/program / instructions/program) × miss rate × miss penalty
+= memory accesses/instruction × miss rate × miss penalty
+```
+
+문제 표현을 모두 반영하면:
+
+```text
+stall CPI
+= references per instruction × miss rate × miss latency
+= accesses per instruction × miss ratio × miss penalty
+= memory references/instruction × miss rate × miss service time
+```
+
+따라서 아래 표현들은 같은 식이다.
+
+```text
+Stall cycles = accesses × miss rate × miss penalty
+Stall CPI = accesses/instruction × miss rate × miss penalty
+Stall CPI = references per instruction × miss rate × miss latency
+```
+
+I-cache와 D-cache를 따로 계산하면:
+
+```text
+I-stall CPI
+= instruction fetches/instruction × I-cache miss rate × I-miss penalty
+= 1 × I-cache miss rate × I-miss penalty
+```
+
+```text
+D-stall CPI
+= data accesses/instruction × D-cache miss rate × D-miss penalty
+= load/store fraction × D-cache miss rate × D-miss penalty
+```
+
+최종:
+
+```text
+Actual CPI = base CPI + I-stall CPI + D-stall CPI
+Total CPI = base CPI + memory stall CPI
+```
+
+### 4. AMAT 공식 유도
+
+한 memory access는 hit이면 hit time만 걸리고, miss이면 hit time에 miss penalty가 추가된다.
+
+```text
+AMAT
+= hit time + miss probability × extra miss time
+= hit time + miss rate × miss penalty(miss latency)
+```
+
+같은 표현:
+
+```text
+Average memory access time
+= cache hit latency + miss ratio × miss service time
+```
+
+주의:
+
+- `miss penalty`가 lower memory access time만 뜻하는지, hit time까지 포함한 total miss time인지 문제 정의를 확인한다.
+- 강의 공식은 보통 `AMAT = hit time + miss rate × miss penalty`이며, 여기서 penalty는 hit time 이후의 추가 시간이다.
+
+### 5. Cache 주소 분해
+
+주소는 보통 다음처럼 나뉜다.
+
+```text
+address bits = tag bits + index bits + offset bits
+tag bits = address bits - index bits - offset bits
+```
+
+offset bit가 주어지면:
+
+```text
+block size bytes = 2^(offset bits)
+block size words = block size bytes / bytes per word
+```
+
+index bit가 주어지면:
+
+```text
+number of entries = 2^(index bits)       direct-mapped일 때
+number of sets = 2^(index bits)          set-associative일 때
+```
+
+일반식:
+
+```text
+blocks(lines) = cache bytes / block bytes
+sets = blocks / associativity
+offset bits = log2(block bytes)
+index bits = log2(sets)
+tag bits = address bits - index bits - offset bits
+```
+
+주소에서 cache 위치를 구할 때:
+
+```text
+block address = floor(byte address / block bytes)
+set index = block address mod number of sets
+```
+
+direct-mapped는 `associativity = 1`이므로:
+
+```text
+sets = entries = lines
+```
+
+### 6. Cache 구현 비트 수
+
+한 line에 필요한 data bit:
+
+```text
+data bits per line = block bytes × 8
+```
+
+한 line 전체 구현 bit:
+
+```text
+bits per line
+= data bits per line
+ + tag bits
+ + valid bit
+ + dirty bit
+ + replacement bits
+```
+
+문제에서 write-back이라고 하지 않으면 dirty bit를 빼는 경우가 많다.
+
+```text
+bits per line = data bits + tag bits + valid bit
+```
+
+전체 cache 구현 bit:
+
+```text
+total required bits = entries × bits per line
+```
+
+순수 data 저장 bit:
+
+```text
+data storage bits = entries × data bits per line
+```
+
+비율:
+
+```text
+ratio = total required bits / data storage bits
+```
+
+같은 표현:
+
+```text
+implementation bits / data bits
+total cache bits / data storage bits
+required bits / data capacity bits
+```
+
+### 7. Block size 최적화
+
+block size \(B\)마다 miss rate와 miss penalty(miss latency)가 다르면 각 후보의 stall을 계산한다.
+
+```text
+stall CPI(B)
+= references per instruction × miss rate(B) × miss penalty(B)
+```
+
+모든 후보에서 `references per instruction`이 같으면 비교할 때 생략 가능하다.
+
+```text
+compare value(B) = miss rate(B) × miss penalty(B)
+```
+
+constant miss latency이면:
+
+```text
+stall CPI(B) ∝ miss rate(B)
+```
+
+따라서 miss rate가 가장 낮은 block size가 최적이다.
+
+### 8. Multilevel cache
+
+recursive AMAT:
+
+```text
+AMAT = T1 + MR1 × (T2 + MR2 × (T3 + ...))
+```
+
+L1/L2 CPI 형태:
+
+```text
+CPI
+= base CPI
+ + L1 misses/instruction × L2 hit penalty
+ + memory misses/instruction × memory penalty
+```
+
+global/local miss rate:
+
+```text
+global L2 miss rate = L1 local miss rate × L2 local miss rate
+L2 local miss rate = global L2 miss rate / L1 local miss rate
+```
+
+### 9. Bandwidth / Transfer
+
+```text
+Bandwidth = bytes transferred / time
+time = bytes transferred / bandwidth
+```
+
+cycle 단위:
+
+```text
+Bandwidth = bytes transferred / cycles
+cycles = bytes transferred / bandwidth
+```
+
+bus:
+
+```text
+Bandwidth = transfers/s × bus width(bits) / 8
+```
+
+DDR:
+
+```text
+Bandwidth = clock × 2 × bus width(bits) / 8
+```
+
+### 10. Amdahl's Law
+
+전체 시간 중 개선되는 부분과 개선되지 않는 부분을 나눈다.
+
+```text
+T_new = T_affected / speedup_of_affected_part + T_unaffected
+Speedup_total = T_old / T_new
+```
+
+비율 \(F\)가 개선되고 그 부분이 \(S\)배 빨라지면:
+
+```text
+Speedup = 1 / ((1-F) + F/S)
+Maximum speedup = 1 / (1-F)
+```
+
+같은 표현:
+
+```text
+parallel fraction = F
+serial fraction = 1-F
+improvement factor = S
+```
+
+### 11. MAC, FLOPs, AI 계산량
+
+```text
+MAC = multiply-accumulate = multiply-add
+1 MAC = 1 multiply + 1 add
+FLOPs ≈ 2 × MACs
+```
+
+dot product:
+
+```text
+dot(a,b) = Σ a_i b_i
+length N dot product = N MACs ≈ 2N FLOPs
+```
+
+matrix multiply:
+
+```text
+A(M×K) × B(K×N)
+MACs = M × N × K
+FLOPs ≈ 2MNK
+```
+
+### 12. Model memory
+
+```text
+model memory = parameter count × bytes/parameter
+parameter storage = number of weights × precision bytes
+```
+
+precision:
+
+```text
+FP32 = 4 bytes
+FP16/BF16 = 2 bytes
+FP8/INT8 = 1 byte
+```
+
+### 13. SIMD/GPU peak 계산
+
+SIMD lanes:
+
+```text
+lanes = register width bits / element width bits
+```
+
+FMA peak:
+
+```text
+FLOPs/instruction = lanes × 2
+Peak FLOPS = cores × lanes × 2 × instructions/cycle × clock
+```
+
+GPU peak:
+
+```text
+Peak FLOPS = FP units × clock × FLOPs per operation
+```
+
+FMA이면:
+
+```text
+FLOPs per operation = 2
+```
+
+### 14. CUDA indexing / Warp
+
+1D:
+
+```text
+global_id = blockIdx.x × blockDim.x + threadIdx.x
+blocks = ceil(N / blockSize)
+```
+
+2D:
+
+```text
+x = blockIdx.x × blockDim.x + threadIdx.x
+y = blockIdx.y × blockDim.y + threadIdx.y
+```
+
+warp:
+
+```text
+warps/block = ceil(threads per block / 32)
+warp efficiency = active threads / (warps × 32)
+cycles per warp instruction = warp width / SIMD width
+```
+
+### 15. Virtual memory / TLB
+
+```text
+offset bits = log2(page bytes)
+VPN bits = virtual address bits - offset bits
+PPN bits = physical address bits - offset bits
+virtual pages = 2^(VPN bits)
+page table size = entries × PTE bytes
+```
+
+TLB effective access time:
+
+```text
+EAT = h(t_TLB + t_M) + (1-h)(t_TLB + t_walk + t_M)
+```
+
+page fault 포함:
+
+```text
+EAT_total = (1-p)EAT + p × fault service time
+```
+
 ## 공통 단위
 
 - `1 byte = 8 bits`
@@ -368,7 +912,36 @@ valid만 포함:
 
 ### Memory stall
 
-`Stall cycles = accesses × miss rate × miss penalty`
+용어:
+
+- `accesses = references = memory references = cache accesses`
+- `miss penalty = miss latency = miss service time`
+- `accesses/instruction = references per instruction = memory references per instruction`
+
+Program 전체 기준:
+
+`Stall cycles = accesses × miss rate × miss penalty(miss latency)`
+
+Instruction당 CPI 기준:
+
+`Stall CPI = accesses/instruction × miss rate × miss penalty(miss latency)`
+
+같은 식의 다른 문제 표현:
+
+`Stall CPI = references per instruction × miss rate × miss latency`
+
+유도:
+
+```text
+Stall cycles
+= accesses/program × miss rate × miss penalty
+
+Stall CPI
+= Stall cycles / instructions
+= (accesses/program / instructions/program) × miss rate × miss penalty
+= accesses/instruction × miss rate × miss penalty
+= references per instruction × miss rate × miss latency
+```
 
 `I-stall CPI = I miss rate × penalty`
 
